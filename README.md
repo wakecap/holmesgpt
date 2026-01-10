@@ -30,6 +30,42 @@ HolmesGPT connects AI models with live observability data and organizational kno
 
 <img width="3114" alt="holmesgpt-architecture-diagram" src="https://github.com/user-attachments/assets/f659707e-1958-4add-9238-8565a5e3713a" />
 
+## Why HolmesGPT vs General Coding Agents?
+
+While general-purpose coding agents like Claude, GitHub Copilot, and Cursor can help with troubleshooting, HolmesGPT is purpose-built for production observability and incident response. Here's why HolmesGPT is different:
+
+### 📊 Handles Terabytes of Data Beyond Context Windows
+
+Production systems generate massive amounts of telemetry data—far too large for any LLM context window. HolmesGPT is designed to work with this scale:
+
+- **Smart data retrieval**: Instead of loading everything into context, Holmes intelligently queries specific data sources based on investigation needs
+- **Iterative refinement**: Automatically narrows down time ranges, filters, and search criteria to find relevant data
+- **Efficient summarization**: Uses specialized transformers to distill large outputs before sending to the LLM
+
+**Example**: When investigating a memory leak, Holmes can query weeks of metrics data, identify the exact time period when issues started, then drill down to specific pods and containers—all without exceeding token limits.
+
+### 🔒 Safe, Read-Only Access Without Approval Prompts
+
+General coding agents require constant user approval for tool execution, making them impractical for production troubleshooting. HolmesGPT provides:
+
+- **Pre-approved toolsets**: 40+ built-in integrations with safe, read-only operations
+- **No interruptions**: Autonomous data gathering without "Execute this command? (yes/no)" prompts
+- **RBAC compliance**: Respects existing Kubernetes and platform permissions
+- **Audit trail**: All actions are logged for compliance and security review
+
+**Example**: Holmes can autonomously query Prometheus metrics, fetch Kubernetes events, analyze logs in Loki, and check Grafana dashboards—all in seconds, without any human intervention.
+
+### 🎨 Hallucination-Free Visualizations
+
+Unlike general agents that describe visualizations through text (introducing potential hallucinations), HolmesGPT provides direct visualization paths:
+
+- **Native dashboard rendering**: Direct links to Grafana dashboards with correct time ranges and variables
+- **Metric graphs**: Automatically generated Prometheus/PromQL visualizations
+- **Trace visualization**: Direct links to Tempo/Jaeger traces for the exact time window
+- **No LLM interpretation**: Visualizations are constructed programmatically, bypassing the LLM entirely
+
+**Example**: When investigating latency issues, Holmes provides a clickable Grafana dashboard link pre-configured with the correct service, time range, and filters—guaranteed to show the actual data, not an AI's interpretation of it.
+
 ### 🔗 Data Sources
 
 HolmesGPT integrates with popular observability and cloud platforms. The following data sources ("toolsets") are built-in. [Add your own](#customizing-holmesgpt).
