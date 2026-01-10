@@ -44,16 +44,17 @@ Production systems generate massive amounts of telemetry data—far too large fo
 
 **Example**: When investigating a memory leak, Holmes can query weeks of metrics data, identify the exact time period when issues started, then drill down to specific pods and containers—all without exceeding token limits.
 
-### 🔒 Safe, Read-Only Access Without Approval Prompts
+### 🔒 Built-In Observability Integrations
 
-General coding agents require constant user approval for tool execution, making them impractical for production troubleshooting. HolmesGPT provides:
+General coding agents either require constant user approval for tool execution, or they run in sandboxed environments where tools are approved but lack access to observability data. HolmesGPT provides:
 
-- **Pre-approved toolsets**: 40+ built-in integrations with safe, read-only operations
-- **No interruptions**: Autonomous data gathering without "Execute this command? (yes/no)" prompts
+- **Pre-integrated toolsets**: 40+ built-in integrations with Prometheus, Grafana, Loki, Tempo, Kubernetes, and more
+- **No setup required**: Instant access to observability platforms without building custom integrations
+- **Autonomous investigation**: Holmes queries multiple data sources automatically without approval prompts
 - **RBAC compliance**: Respects existing Kubernetes and platform permissions
 - **Audit trail**: All actions are logged for compliance and security review
 
-**Example**: Holmes can autonomously query Prometheus metrics, fetch Kubernetes events, analyze logs in Loki, and check Grafana dashboards—all in seconds, without any human intervention.
+**Example**: Holmes can autonomously query Prometheus metrics, fetch Kubernetes events, analyze logs in Loki, and check Grafana dashboards—all in seconds, without any configuration or human intervention.
 
 ### 🎨 Hallucination-Free Visualizations
 
@@ -65,6 +66,19 @@ Unlike general agents that describe visualizations through text (introducing pot
 - **No LLM interpretation**: Visualizations are constructed programmatically, bypassing the LLM entirely
 
 **Example**: When investigating latency issues, Holmes provides a clickable Grafana dashboard link pre-configured with the correct service, time range, and filters—guaranteed to show the actual data, not an AI's interpretation of it.
+
+### 🔄 Workflow & Alert Integration
+
+HolmesGPT integrates into your existing on-call and incident response workflows:
+
+- **Alert sources**: Automatically fetch alerts from AlertManager, PagerDuty, OpsGenie, Jira
+- **Investigation loop**: Analyzes alerts, gathers context from multiple sources, identifies root causes
+- **Results delivery**: Write findings back to the alert source or send to Slack
+- **Interactive mode**: Ask follow-up questions and drill down into specific issues
+
+**Example**: When a Prometheus alert fires, Holmes can automatically investigate it, analyze metrics and logs, determine the root cause, and post the analysis directly to your PagerDuty incident—all without manual intervention.
+
+**[Learn more about Holmes' differentiators →](https://holmesgpt.dev/walkthrough/holmes-vs-coding-agents/)**
 
 ### 🔗 Data Sources
 

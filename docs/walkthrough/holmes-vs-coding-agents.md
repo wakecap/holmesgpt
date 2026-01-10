@@ -11,10 +11,11 @@ Production troubleshooting has unique requirements that general coding agents ar
 | Requirement | General Coding Agents | HolmesGPT |
 |------------|----------------------|-----------|
 | **Data Scale** | Works with files in a codebase | Works with terabytes of telemetry data |
-| **Tool Execution** | Requires user approval for each command | Autonomous with pre-approved read-only tools |
+| **Tool Execution** | Requires approval OR sandboxed but lacks integrations | Autonomous with 40+ pre-built observability integrations |
 | **Domain** | General software development | Specialized for observability platforms |
 | **Visualizations** | Describes charts in text (can hallucinate) | Direct links to native dashboards (no hallucinations) |
 | **Context** | Static code files | Live, streaming metrics, logs, and traces |
+| **Workflow Integration** | Manual copy/paste to incident tools | Native alert source and destination integrations |
 
 ## 1. Handling Terabytes of Data Beyond Context Windows
 
@@ -123,11 +124,11 @@ holmes ask "investigate the latency spike in checkout service around 2pm today"
 
 All without hitting context limits or requiring manual data extraction.
 
-## 2. Safe, Read-Only Access Without Approval Prompts
+## 2. Built-In Observability Integrations
 
 ### The Problem
 
-Production troubleshooting requires querying dozens of data sources rapidly. In a typical incident investigation, you might need to:
+Production troubleshooting requires querying dozens of specialized data sources rapidly. In a typical incident investigation, you might need to:
 
 - Query 5-10 Prometheus metrics
 - Search logs across multiple services
@@ -136,11 +137,14 @@ Production troubleshooting requires querying dozens of data sources rapidly. In 
 - Query trace data from Tempo
 - Check recent deployments in ArgoCD
 
-**With approval prompts, this becomes unusable**: 20+ "Execute this command? (yes/no)" interruptions destroy investigation flow during a time-sensitive incident.
+**General coding agents face two challenges**:
+
+1. **With approval prompts**: 20+ "Execute this command? (yes/no)" interruptions destroy investigation flow during a time-sensitive incident
+2. **With sandboxed environments**: Even when tools are pre-approved, they lack integrations with observability platforms—you'd need to manually build connectors to Prometheus, Grafana, Loki, etc.
 
 ### How General Agents Handle This
 
-General coding agents use an interactive approval model:
+**Interactive approval model:**
 
 ```
 Agent: "I'll run: kubectl get pods -n production"
@@ -159,6 +163,32 @@ User: [y/n]? y
 ```
 
 This makes sense for write operations (deployments, configuration changes) but is impractical for read-only troubleshooting.
+
+**Sandboxed environment approach:**
+
+Some coding agents run in sandboxed environments where all tools are pre-approved. However, they still face a critical limitation:
+
+```bash
+# What you can do in a sandbox:
+✅ kubectl get pods
+✅ kubectl logs <pod>
+✅ curl http://localhost:9090/api/v1/query  # IF Prometheus is port-forwarded
+
+# What you can't easily do:
+❌ Query Prometheus (no built-in integration)
+❌ Search Grafana dashboards (no API client)
+❌ Query Loki logs (need to build LogQL queries manually)
+❌ Fetch Tempo traces (no trace client)
+❌ Access cloud provider APIs (AWS, Azure, GCP)
+```
+
+You'd need to:
+1. Manually port-forward each service
+2. Construct API calls from scratch
+3. Parse and interpret JSON responses
+4. Build context about which APIs to call and how
+
+This defeats the purpose of using an agent—you're doing most of the integration work yourself.
 
 ### How HolmesGPT Solves This
 
@@ -375,6 +405,177 @@ affected query performance.
 
 **Result**: User can immediately verify the analysis by clicking links, seeing the actual data, and trusting the conclusions.
 
+## 4. Workflow & On-Call Integration
+
+### The Problem
+
+Production incidents don't happen in isolation—they're part of a broader workflow:
+
+1. **Alert fires** in AlertManager/PagerDuty/OpsGenie
+2. **On-call engineer gets paged**
+3. **Investigation begins** across multiple tools
+4. **Root cause identified**
+5. **Resolution documented** in the incident management system
+6. **Team notified** via Slack/Teams
+
+General coding agents require manual copying and pasting at every step:
+
+- Copy alert details from PagerDuty → paste into chat
+- Copy investigation findings → paste back into PagerDuty
+- Copy summary → paste into Slack
+- Manual context switching between tools
+
+This is slow, error-prone, and disrupts investigation flow.
+
+### How General Agents Handle This
+
+**Manual workflow integration:**
+
+```
+1. On-call receives PagerDuty alert
+2. Opens PagerDuty, reads alert details
+3. Copies alert description
+4. Opens coding agent chat
+5. Pastes alert details with "investigate this"
+6. Agent investigates
+7. Copy agent's findings
+8. Switch back to PagerDuty
+9. Paste findings into incident notes
+10. Open Slack
+11. Manually summarize and post to team channel
+```
+
+Total time: Multiple minutes of context switching during a critical incident.
+
+### How HolmesGPT Solves This
+
+HolmesGPT provides **native integrations** for the entire incident lifecycle:
+
+#### Alert Source Integration
+
+Automatically fetch alerts from multiple sources:
+
+```bash
+# AlertManager integration
+holmes investigate alertmanager --alertmanager-url https://alertmanager.company.com
+
+# PagerDuty integration
+holmes investigate pagerduty --pagerduty-api-key <key>
+
+# OpsGenie integration
+holmes investigate opsgenie --opsgenie-api-key <key>
+
+# Jira integration
+holmes investigate jira --jira-url https://company.atlassian.net
+```
+
+Holmes automatically:
+- Fetches active alerts/incidents
+- Extracts relevant metadata (labels, tags, severity)
+- Prioritizes which alerts to investigate
+- Gathers initial context from alert annotations
+
+#### Investigation Loop
+
+Once an alert is fetched, Holmes:
+
+1. **Analyzes alert metadata** - Understands what service/component is affected
+2. **Selects relevant toolsets** - Automatically enables appropriate integrations
+3. **Gathers multi-source data** - Queries Prometheus, Kubernetes, logs, traces
+4. **Performs root cause analysis** - Correlates data to identify issues
+5. **Generates actionable recommendations** - Suggests fixes or next steps
+
+All autonomously, without manual tool selection or approval prompts.
+
+#### Results Delivery
+
+Holmes can write investigation results back to the source:
+
+```bash
+# Write findings back to PagerDuty incident
+holmes investigate pagerduty --pagerduty-api-key <key> --update
+
+# Write to Jira ticket
+holmes investigate jira --jira-url https://company.atlassian.net --update
+
+# Send to Slack (via Robusta SaaS or custom integration)
+# Results automatically posted to configured Slack channel
+```
+
+**Result format:**
+- **Root cause summary** - Clear explanation of what went wrong
+- **Evidence** - Links to dashboards, traces, and relevant data
+- **Recommendations** - Specific actions to resolve or mitigate
+- **Timestamp and metadata** - When investigation ran, which tools were used
+
+#### Interactive Follow-Up
+
+Holmes supports interactive mode for drill-down investigations:
+
+```bash
+holmes ask "investigate the memory leak in payment-service" --interactive
+
+# Holmes provides initial analysis
+# User can ask follow-up questions:
+> "show me the specific pod that's leaking"
+> "what was the memory usage yesterday at this time?"
+> "check if this correlates with deployment times"
+```
+
+### Real-World Workflow Comparison
+
+**General Coding Agent Workflow:**
+
+```
+Time 00:00 - PagerDuty page received: High API latency
+Time 00:02 - Engineer opens laptop, logs into PagerDuty
+Time 00:04 - Copies alert details, opens coding agent
+Time 00:06 - Pastes alert, waits for investigation to start
+Time 00:08 - Agent asks to run kubectl commands (approval prompts)
+Time 00:12 - Agent requests to query Prometheus (manual port-forward needed)
+Time 00:15 - Copy/paste Prometheus metrics into chat
+Time 00:18 - Agent provides analysis
+Time 00:20 - Copy findings, paste into PagerDuty notes
+Time 00:22 - Manually post summary to Slack
+Time 00:25 - Total time to investigation result in tools: 25 minutes
+```
+
+**HolmesGPT Workflow:**
+
+```bash
+Time 00:00 - PagerDuty page received: High API latency
+Time 00:02 - Engineer runs: holmes investigate pagerduty --update
+Time 00:03 - Holmes automatically:
+           ✓ Fetches incident from PagerDuty
+           ✓ Queries Prometheus for API latency metrics
+           ✓ Checks Kubernetes pod status
+           ✓ Searches logs in Loki
+           ✓ Identifies root cause: Database connection pool exhaustion
+           ✓ Writes findings back to PagerDuty incident
+           ✓ Posts summary to configured Slack channel
+Time 00:03 - Total time to investigation result in tools: 3 minutes
+```
+
+**Result**: 8x faster incident investigation with full audit trail.
+
+### Integration Architecture
+
+HolmesGPT's integration architecture supports:
+
+| Integration Type | Purpose | Examples |
+|-----------------|---------|----------|
+| **Alert Sources** | Fetch alerts to investigate | AlertManager, PagerDuty, OpsGenie, Jira |
+| **Data Sources** | Gather investigation evidence | Prometheus, Loki, Tempo, Kubernetes, AWS |
+| **Knowledge Sources** | Access runbooks and docs | Confluence, Slab, internal wikis |
+| **Destinations** | Deliver investigation results | Slack, PagerDuty, Jira, GitHub |
+| **Remediation** | Automated fixes (optional) | GitHub PRs, Kubernetes patches |
+
+All integrations:
+- ✅ **Work out of the box** - No custom development required
+- ✅ **Respect permissions** - Use configured RBAC and API keys
+- ✅ **Log all actions** - Full audit trail for compliance
+- ✅ **Handle errors gracefully** - Retry logic and fallbacks built-in
+
 ## Summary: When to Use Each
 
 | Use Case | Recommended Tool |
@@ -384,9 +585,11 @@ affected query performance.
 | **Analyzing large-scale metrics/logs** | HolmesGPT |
 | **Troubleshooting microservices** | HolmesGPT |
 | **Alert investigation and root cause analysis** | HolmesGPT |
+| **On-call rotations with PagerDuty/OpsGenie** | HolmesGPT |
+| **Automated alert enrichment** | HolmesGPT |
 | **Writing tests, refactoring code** | General coding agents |
 | **DevOps automation scripts** | General coding agents |
-| **On-call troubleshooting** | HolmesGPT |
+| **Local development and testing** | General coding agents |
 
 ## Try It Yourself
 
