@@ -61,6 +61,7 @@ from holmes.core.investigation_structured_output import clear_json_markdown
 from holmes.plugins.prompts import load_and_render_prompt
 from holmes.utils.holmes_sync_toolsets import holmes_sync_toolsets_status
 from holmes.utils.log import EndpointFilter
+from holmes.checks.checks_api import init_checks_app
 # removed: add_runbooks_to_user_prompt
 
 
@@ -157,6 +158,9 @@ if LOG_PERFORMANCE:
             logging.info(
                 f"Request completed {request.method} {request.url.path} status={status_code} latency={process_time}ms"
             )
+
+
+init_checks_app(app, config)
 
 
 @app.post("/api/investigate")
