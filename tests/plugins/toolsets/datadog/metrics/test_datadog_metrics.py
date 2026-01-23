@@ -327,3 +327,90 @@ class TestDatadogMetricsToolset:
         assert "dd_app_key" in example
         assert "site_api_url" in example
         assert example["site_api_url"] == "https://api.datadoghq.com/"
+
+    @patch("holmes.plugins.toolsets.datadog.datadog_api.requests.get")
+    def test_list_active_metrics_with_metric_name_filter(self, mock_get):
+        """Test that metric_name_filter filters metrics by substring match."""
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {
+            "metrics": [
+                "system.cpu.user",
+                "system.cpu.system",
+                "system.mem.used",
+                "kubernetes.cpu.usage",
+                "kubernetes.memory.working_set",
+                "docker.container.running",
+            ]
+        }
+        mock_get.return_value = response
+
+        params = {"metric_name_filter": "cpu"}
+        tool = self.toolset.tools[0]
+        result = tool._invoke(params, context=create_mock_tool_invoke_context())
+
+        assert result.status == StructuredToolResultStatus.SUCCESS
+        # Should only include metrics containing "cpu"
+        assert "system.cpu.user" in result.data
+        assert "system.cpu.system" in result.data
+        assert "kubernetes.cpu.usage" in result.data
+        # Should not include metrics without "cpu"
+        assert "system.mem.used" not in result.data
+        assert "docker.container.running" not in result.data
+
+    @patch("holmes.plugins.toolsets.datadog.datadog_api.requests.get")
+    def test_list_active_metrics_with_limit(self, mock_get):
+        """Test that limit parameter restricts number of returned metrics."""
+        response = Mock()
+        response.status_code = 200
+        # Return more metrics than the limit
+        response.json.return_value = {"metrics": [f"metric.{i}" for i in range(100)]}
+        mock_get.return_value = response
+
+        params = {"limit": 10}
+        tool = self.toolset.tools[0]
+        result = tool._invoke(params, context=create_mock_tool_invoke_context())
+
+        assert result.status == StructuredToolResultStatus.SUCCESS
+        # Count metric lines (excluding header and separator)
+        lines = result.data.split("\n")
+        metric_lines = [
+            line
+            for line in lines
+            if line and not line.startswith("-") and line != "Metric Name"
+        ]
+        # Should be limited to 10 metrics plus truncation notice
+        assert len(metric_lines) <= 12  # 10 metrics + possible truncation message
+
+    @patch("holmes.plugins.toolsets.datadog.datadog_api.requests.get")
+    def test_list_active_metrics_truncation_notice(self, mock_get):
+        """Test that truncation notice is shown when results are limited."""
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {"metrics": [f"metric.{i}" for i in range(1000)]}
+        mock_get.return_value = response
+
+        params = {"limit": 50}
+        tool = self.toolset.tools[0]
+        result = tool._invoke(params, context=create_mock_tool_invoke_context())
+
+        assert result.status == StructuredToolResultStatus.SUCCESS
+        # Should show truncation notice
+        assert "Showing 50 of 1000 metrics" in result.data
+        assert "metric_name_filter" in result.data
+
+    @patch("holmes.plugins.toolsets.datadog.datadog_api.requests.get")
+    def test_list_active_metrics_no_match_for_filter(self, mock_get):
+        """Test error when metric_name_filter matches nothing."""
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {"metrics": ["system.cpu.user", "system.mem.used"]}
+        mock_get.return_value = response
+
+        params = {"metric_name_filter": "nonexistent"}
+        tool = self.toolset.tools[0]
+        result = tool._invoke(params, context=create_mock_tool_invoke_context())
+
+        assert result.status == StructuredToolResultStatus.ERROR
+        assert "No metrics matched the filter" in result.data
+        assert "nonexistent" in result.data
