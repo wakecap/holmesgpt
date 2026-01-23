@@ -2,6 +2,58 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## WakeCap Fork
+
+This is a WakeCap internal fork of [robusta-dev/holmesgpt](https://github.com/robusta-dev/holmesgpt) with the following enhancements:
+
+### Claude CLI Provider (WakeCap Addition)
+
+This fork adds support for using **Claude CLI** instead of the Anthropic HTTP API. This allows using your Claude Max subscription instead of paying for API credits.
+
+**Key files:**
+
+- `holmes/core/llm_claude_cli.py` - Custom LLM provider that wraps Claude CLI
+- `holmes/core/llm.py` - Added `provider` field to `ModelEntry`
+- `holmes/config.py` - Integration to select Claude CLI provider
+
+**Configuration Example (`~/.holmes/config.yaml`):**
+
+```yaml
+# Use Claude CLI with Sonnet model
+model: claude-cli-sonnet
+
+models:
+  claude-cli-sonnet:
+    model: sonnet
+    provider: claude-cli
+    custom_args:
+      timeout: 300
+      allowed_tools:
+        - Bash
+
+  claude-cli-opus:
+    model: opus
+    provider: claude-cli
+    custom_args:
+      timeout: 600
+      allowed_tools:
+        - Bash
+```
+
+**How it works:**
+
+1. Claude CLI handles the agentic loop internally (tool execution)
+2. The `ClaudeCLILLM` class converts HolmesGPT messages to a single prompt
+3. Claude CLI executes with `--allowedTools Bash` for kubectl access
+4. Response is returned without `tool_calls` (signals investigation complete)
+
+**Requirements:**
+
+- Claude CLI installed and authenticated (`claude --help` works)
+- Claude Max subscription (for CLI access)
+
+---
+
 ## Repository Overview
 
 HolmesGPT is an AI-powered troubleshooting agent that connects to observability platforms (Kubernetes, Prometheus, Grafana, etc.) to automatically diagnose and analyze infrastructure and application issues. It uses an agentic loop to investigate problems by calling tools to gather data from multiple sources.

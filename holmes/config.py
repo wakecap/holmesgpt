@@ -12,7 +12,27 @@ from pydantic import BaseModel, ConfigDict, FilePath, PrivateAttr, SecretStr
 from holmes.common.env_vars import ROBUSTA_CONFIG_PATH
 from holmes.core.llm import DefaultLLM, LLMModelRegistry
 from holmes.core.tools_utils.tool_executor import ToolExecutor
+
+# Lazy import for ClaudeCLILLM and ClaudeAgentSDKLLM to avoid import failures
+# when claude-agent-sdk or dependencies are not installed
+# These are imported where needed in _get_llm() method
 from holmes.core.toolset_manager import ToolsetManager
+
+
+def _is_claude_sdk_llm(llm: Any) -> bool:
+    """
+    Check if the LLM instance is a ClaudeAgentSDKLLM.
+
+    This helper avoids importing ClaudeAgentSDKLLM at module level,
+    which would fail if claude-agent-sdk is not installed.
+    """
+    try:
+        from holmes.core.llm_claude_sdk import ClaudeAgentSDKLLM
+        return _is_claude_sdk_llm(llm)
+    except ImportError:
+        return False
+
+
 from holmes.plugins.runbooks import (
     RunbookCatalog,
     load_builtin_runbooks,
@@ -312,10 +332,15 @@ class Config(RobustaBaseConfig):
         tool_executor = self.create_console_tool_executor(dal, refresh_toolsets)
         from holmes.core.tool_calling_llm import ToolCallingLLM
 
+        llm = self._get_llm(tracer=tracer, model_key=model_name)
+        # If using SDK provider, ensure it has access to tools
+        if _is_claude_sdk_llm(llm):
+            llm.set_tool_executor(tool_executor)
+
         return ToolCallingLLM(
             tool_executor,
             self.max_steps,
-            self._get_llm(tracer=tracer, model_key=model_name),
+            llm,
         )
 
     def create_agui_toolcalling_llm(
@@ -327,8 +352,13 @@ class Config(RobustaBaseConfig):
         tool_executor = self.create_agui_tool_executor(dal)
         from holmes.core.tool_calling_llm import ToolCallingLLM
 
+        llm = self._get_llm(model, tracer)
+        # If using SDK provider, ensure it has access to tools
+        if _is_claude_sdk_llm(llm):
+            llm.set_tool_executor(tool_executor)
+
         return ToolCallingLLM(
-            tool_executor, self.max_steps, self._get_llm(model, tracer)
+            tool_executor, self.max_steps, llm
         )
 
     def create_toolcalling_llm(
@@ -340,8 +370,13 @@ class Config(RobustaBaseConfig):
         tool_executor = self.create_tool_executor(dal)
         from holmes.core.tool_calling_llm import ToolCallingLLM
 
+        llm = self._get_llm(model, tracer)
+        # If using SDK provider, ensure it has access to tools
+        if _is_claude_sdk_llm(llm):
+            llm.set_tool_executor(tool_executor)
+
         return ToolCallingLLM(
-            tool_executor, self.max_steps, self._get_llm(model, tracer)
+            tool_executor, self.max_steps, llm
         )
 
     def create_issue_investigator(
@@ -360,11 +395,16 @@ class Config(RobustaBaseConfig):
         tool_executor = self.create_tool_executor(dal)
         from holmes.core.tool_calling_llm import IssueInvestigator
 
+        llm = self._get_llm(model, tracer)
+        # If using SDK provider, ensure it has access to tools
+        if _is_claude_sdk_llm(llm):
+            llm.set_tool_executor(tool_executor)
+
         return IssueInvestigator(
             tool_executor=tool_executor,
             runbook_manager=runbook_manager,
             max_steps=self.max_steps,
-            llm=self._get_llm(model, tracer),
+            llm=llm,
             cluster_name=self.cluster_name,
         )
 
@@ -381,11 +421,16 @@ class Config(RobustaBaseConfig):
         tool_executor = self.create_console_tool_executor(dal=dal)
         from holmes.core.tool_calling_llm import IssueInvestigator
 
+        llm = self._get_llm(model_key=model_name)
+        # If using SDK provider, ensure it has access to tools
+        if _is_claude_sdk_llm(llm):
+            llm.set_tool_executor(tool_executor)
+
         return IssueInvestigator(
             tool_executor=tool_executor,
             runbook_manager=runbook_manager,
             max_steps=self.max_steps,
-            llm=self._get_llm(model_key=model_name),
+            llm=llm,
             cluster_name=self.cluster_name,
         )
 
@@ -498,6 +543,7 @@ class Config(RobustaBaseConfig):
 
     # TODO: move this to the llm model registry
     def _get_llm(self, model_key: Optional[str] = None, tracer=None) -> "DefaultLLM":
+        from holmes.core.llm import LLM
         sentry_sdk.set_tag("requested_model", model_key)
         model_entry = self.llm_model_registry.get_model_params(model_key)
         model_params = model_entry.model_dump(exclude_none=True)
@@ -505,6 +551,64 @@ class Config(RobustaBaseConfig):
         api_version = self.api_version
         is_robusta_model = model_params.pop("is_robusta_model", False)
         sentry_sdk.set_tag("is_robusta_model", is_robusta_model)
+
+        # Check for Claude CLI provider
+        provider = model_params.pop("provider", None)
+        if provider == "claude-cli":
+            try:
+                from holmes.core.llm_claude_cli import ClaudeCLILLM
+            except ImportError as e:
+                raise RuntimeError(
+                    f"Claude CLI provider requires claude-agent-sdk dependencies. "
+                    f"Install with: pip install claude-agent-sdk. Error: {e}"
+                )
+            model = model_params.pop("model")
+            model_name = model_params.pop("name", None) or model_key or model
+            sentry_sdk.set_tag("model_name", model_name)
+            sentry_sdk.set_tag("provider", "claude-cli")
+            # Extract timeout if specified in custom_args
+            custom_args = model_params.pop("custom_args", {}) or {}
+            timeout = custom_args.get("timeout", 300)
+            allowed_tools = custom_args.get("allowed_tools", ["Bash"])
+            llm: LLM = ClaudeCLILLM(
+                model=model,
+                timeout=timeout,
+                allowed_tools=allowed_tools,
+            )
+            logging.info(
+                f"Using Claude CLI model: {model_name} ({llm.get_context_window_size():,} total tokens, {llm.get_maximum_output_token():,} output tokens)"
+            )
+            return llm  # type: ignore
+
+        # Check for Claude Agent SDK provider
+        if provider == "claude-sdk":
+            try:
+                from holmes.core.llm_claude_sdk import ClaudeAgentSDKLLM
+            except ImportError as e:
+                raise RuntimeError(
+                    f"Claude Agent SDK provider requires claude-agent-sdk package. "
+                    f"Install with: pip install claude-agent-sdk. Error: {e}"
+                )
+            model = model_params.pop("model")
+            model_name = model_params.pop("name", None) or model_key or model
+            sentry_sdk.set_tag("model_name", model_name)
+            sentry_sdk.set_tag("provider", "claude-sdk")
+            # Extract options from custom_args
+            custom_args = model_params.pop("custom_args", {}) or {}
+            max_turns = custom_args.get("max_turns", 40)
+            permission_mode = custom_args.get("permission_mode", "bypassPermissions")
+            llm: LLM = ClaudeAgentSDKLLM(
+                model=model,
+                max_turns=max_turns,
+                permission_mode=permission_mode,
+                tool_executor=self._server_tool_executor,
+            )
+            logging.info(
+                f"Using Claude Agent SDK model: {model_name} ({llm.get_context_window_size():,} total tokens, {llm.get_maximum_output_token():,} output tokens)"
+            )
+            return llm  # type: ignore
+
+        # Default LiteLLM provider
         if is_robusta_model:
             # we set here the api_key since it is being refresh when exprided and not as part of the model loading.
             account_id, token = self.dal.get_ai_credentials()

@@ -79,6 +79,9 @@ class ModelEntry(BaseModel):
     api_base: Optional[str] = None
     api_version: Optional[str] = None
 
+    # Provider type: "litellm" (default) or "claude-cli" (uses Claude CLI instead of HTTP API)
+    provider: Optional[str] = None
+
     model_config = ConfigDict(
         extra="allow",
     )
