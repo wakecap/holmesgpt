@@ -170,3 +170,7 @@ config_toolsets.yaml
 **/.claude/settings.local.json
 .claude-trace/
 eval_results.json
+
+# Runtime files
+.claude/data/
+logs/
